@@ -28,6 +28,18 @@ function Point(x, y) {
 			if (arguments.length == 1) return this.x == o.x && this.y == o.y;
 			return Math.abs(this.x - o.x) < tolerance && Math.abs(this.y - o.y) < tolerance;
 		},
+		moveTo: function() {
+			if (arguments.length < 1) return;
+			if (arguments.length == 1) {
+				this.x = arguments[0].x;
+				this.y = arguments[0].y;
+				return;
+			}
+			this.x = arguments[0];
+			this.y = arguments[1];
+			return;
+		},
+		clone: function() { return Point(this.x, this.y); },
 	};
 }
 
@@ -106,6 +118,7 @@ function Rect() {
 	ret.equals = function(o) {
 		return this.l == o.l && this.r == o.r && this.t == o.t && this.b == o.b;
 	};
+	ret.clone = function() { return Rect(this); };
 	return ret;
 }
 
@@ -163,6 +176,27 @@ function isPointOnPath(path, point) {
 	return getPointOnPath(path, point) !== null;
 }
 
+function arrayInsert(array, index, item) {
+	if (index >= array.length) {
+		return [ ...array, item ]
+	} else {
+		var ret = [];
+		for(i = 0, l = array.length; i < l; i++) {
+			if (index == i) ret.push(item);
+			ret.push(array[i]);
+		}
+		return ret;
+	}
+}
+
+function arrayCopy(array) {
+	var ret = [];
+	for (i = 0, l = array.length; i < l; ++i) {
+		ret.push(array[i].clone());
+	}
+	return ret;
+}
+
 /*            GLOBALS           */
 var c = document.getElementById("content");
 var d = c.getContext("2d");
@@ -175,11 +209,12 @@ var path = [
 	Point(50, 40),
 ];
 
+var userPath = arrayCopy(path);
 
 
 d.scale(SCALE, SCALE);
 
-function draw() {
+function draw(path) {
 	d.clearRect(0, 0, c.width, c.height);
 	d.beginPath();
 	d.lineWidth = 1;
@@ -195,45 +230,53 @@ function draw() {
 	d.stroke();
 }
 
-var trackMouse = false
+var trackMouse = null
 
 c.addEventListener("mousedown", function(event) {
 	appendEventExtensions(c, event);
-	trackMouse = true;
 	var p = event.relativePoint.scale(SCALE);
-	console.log("<- down x:"+p.x+", y:"+p.y);
+//	console.log("<- down x:"+p.x+", y:"+p.y);
 	
-	var where = getPointOnPath(path, p)
-	draw();
-	console.log(where);
+	var w = getPointOnPath(path, p)
+	var i = parseInt(w);
+	userPath = arrayCopy(path);
+	if (i == w) trackMouse = userPath[i];
+	else {
+		userPath = arrayInsert(userPath, i + 1, p);
+		trackMouse = p;
+	}
 }, false);
 
 c.addEventListener("mousemove", function(event) {
 	appendEventExtensions(c, event);
-	if (!trackMouse) return;
+	if (trackMouse === null) return;
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("-- move x:"+p.x+", y:"+p.y)
-	draw();
+	trackMouse.moveTo(p);
+	draw(userPath);
 }, false);
 
 c.addEventListener("mouseup", function(event) {
 	appendEventExtensions(c, event);
-	if (!trackMouse) return;
-	trackMouse = false;
+	if (trackMouse === null) return;
+	trackMouse = null;
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("-> up   x:"+p.x+", y:"+p.y)
+	path = arrayCopy(userPath);
+	draw(userPath);
 }, false);
 
 c.addEventListener("mouseout", function(event) {
 	appendEventExtensions(c, event);
-	if (!trackMouse) return;
-	trackMouse = false;
+	if (trackMouse === null) return;
+	trackMouse = null;
 	var p = event.relativePoint.scale(SCALE);
-	console.log("-> out  x:"+p.x+", y:"+p.y)
-	//TODO cancel
+//	console.log("-> out  x:"+p.x+", y:"+p.y)
+	userPath = arrayCopy(path);
+	draw(userPath);
 }, false);
 
-draw()
+draw(userPath)
 
 </script>
 </body>
