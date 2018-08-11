@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="content" width="1400" height="900" style="border: 1px solid gray; margin: 10px;"></canvas>
+<script>
+/*       CONSTANTS      */
+var SCALE = 4;
+var LINE_ERROR = 1/4 * SCALE;
+var POINT_ERROR = 1/2 * SCALE;
+
+/*        "CLASSES"            */
+function Point(x, y) { 
+	return { 
+		x: x,
+		y: y,
+		scale: function(scale) {
+			return Point(this.x / scale, this.y / scale);
+		},
+		moveBy: function(mx, my) {
+			return Point(this.x + mx, this.y + my);
+		},
+		distanceTo: function(o) {
+			var dx = Math.abs(this.x - o.x);
+			var dy = Math.abs(this.y - o.y);
+			return Math.sqrt(dx * dx + dy * dy);
+		},
+		equals: function(o, tolerance) {
+			if (arguments.length == 1) return this.x == o.x && this.y == o.y;
+			return Math.abs(this.x - o.x) < tolerance && Math.abs(this.y - o.y) < tolerance;
+		},
+	};
+}
+
+function Rect() { 
+	var ret = {};
+	if (arguments.length == 1) { //copy
+		var p = arguments[0];
+		ret.l = p.l;
+		ret.r = p.r;
+		ret.t = p.t;
+		ret.b = p.b;
+	} else if (arguments.length == 2) { //from points
+		var p1 = arguments[0];
+		var p2 = arguments[1];
+		if (p1.x > p2.x) {
+			ret.l = p2.x;
+			ret.r = p1.x;
+		} else {
+			ret.l = p1.x;
+			ret.r = p2.x;
+		}
+		
+		if (p1.y > p2.y) {
+			ret.t = p2.y;
+			ret.b = p1.y;
+		} else {
+			ret.t = p1.y;
+			ret.b = p2.y;
+		}
+	} else if (arguments.length == 4) { //from direct values
+		ret.l = arguments[0];
+		ret.r = arguments[1];
+		ret.t = arguments[2];
+		ret.b = arguments[3];
+	} else return;
+	ret.contains = function(point) {
+		return point.x >= this.l && point.x <= this.r && point.y >= this.t && point.y <= this.b;
+	};
+	ret.enlarge = function() {
+		if(arguments.length == 0) return Rect(this);
+		if(arguments.length == 1) {
+			var add = arguments[0];
+			return Rect(
+				this.l - add,
+				this.r + add,
+				this.t - add,
+				this.b + add
+			);
+		}
+		if(arguments.length == 2) {
+			var h = arguments[0];
+			var w = arguments[1];
+			return Rect(
+				this.l - w,
+				this.r + w,
+				this.t - h,
+				this.b + h
+			);
+		}
+		if(arguments.length == 4) {
+			return Rect(
+				this.l - arguments[0],
+				this.r + arguments[1],
+				this.t - arguments[2],
+				this.b + arguments[3]
+			);
+		}
+		return Rect(this);
+	};
+	ret.width = function() {
+		return this.r - this.l;
+	};
+	ret.height = function() {
+		return this.b - this.t;
+	};
+	ret.equals = function(o) {
+		return this.l == o.l && this.r == o.r && this.t == o.t && this.b == o.b;
+	};
+	return ret;
+}
+
+/*      extensions     */
+function appendEventExtensions(element, event) {
+	event.relativeX = event.pageX - element.offsetLeft;
+	event.relativeY = event.pageY - element.offsetTop;
+	event.point = Point(event.x, event.y);
+	event.pagePoint = Point(event.pageX, event.pageY);
+	event.relativePoint = Point(event.relativeX, event.relativeY);
+}
+
+/*          FUNCTIONS          */
+function isPointOnLine(l1, l2, point) {
+	if (!Rect(l1, l2).enlarge(LINE_ERROR).contains(point)) return false;
+	
+	var l = l2.moveBy(-l1.x, -l1.y);
+	if (l.x == 0) { //vertical
+		return Math.abs(l1.x - point.x) < LINE_ERROR;
+	} else if (l.y == 0) { //horizontal
+		return Math.abs(l1.y - point.y) < LINE_ERROR;
+	} else {
+		var relativePoint = point.moveBy(-l1.x, -l1.y);
+		
+		var lSlope = l.y / l.x;
+		var pSlope = -1 / lSlope;
+		
+		var pc = relativePoint.y - (pSlope * relativePoint.x);
+		var cX = pc / (lSlope - pSlope);
+		var cY = cX * lSlope;
+		var crossPoint = Point(cX, cY);
+		
+		return crossPoint.distanceTo(relativePoint) < LINE_ERROR;
+	}
+}
+
+function getPointOnPath(path, point) {
+	if (path.length < 1) return null;
+	if (path.length == 1) {
+		if (path[0].equals(point, POINT_ERROR)) return 0;
+		return null;
+	}
+	
+	for (var i = 0, l = path.length - 1; i < l; ++i) {
+		if (path[i].equals(point, POINT_ERROR)) return i;
+		if (path[i + 1].equals(point, POINT_ERROR)) return i + 1;
+		if (isPointOnLine(path[i], path[i + 1], point)) return i + 0.5;
+	}
+	if (path.length > 2 && isPointOnLine(path[path.length - 1], path[0], point)) return path.length - 0.5;
+	
+	return null;
+}
+
+function isPointOnPath(path, point) {
+	return getPointOnPath(path, point) !== null;
+}
+
+/*            GLOBALS           */
+var c = document.getElementById("content");
+var d = c.getContext("2d");
+
+var path = [
+	Point(40, 50),
+	Point(60, 70),
+	Point(70, 50),
+	Point(70, 40),
+	Point(50, 40),
+];
+
+
+
+d.scale(SCALE, SCALE);
+
+function draw() {
+	d.clearRect(0, 0, c.width, c.height);
+	d.beginPath();
+	d.lineWidth = 1;
+	d.strokeStyle = "#000000";
+	d.fillStyle = "#000000";
+	if (path.length > 0) {
+		d.moveTo(path[0].x, path[0].y);
+		for(l = path.length, i = 1; i < l; ++i) {
+			d.lineTo(path[i].x, path[i].y);
+		}
+	}
+	d.closePath();
+	d.stroke();
+}
+
+var trackMouse = false
+
+c.addEventListener("mousedown", function(event) {
+	appendEventExtensions(c, event);
+	trackMouse = true;
+	var p = event.relativePoint.scale(SCALE);
+	console.log("<- down x:"+p.x+", y:"+p.y);
+	
+	var where = getPointOnPath(path, p)
+	draw();
+	console.log(where);
+}, false);
+
+c.addEventListener("mousemove", function(event) {
+	appendEventExtensions(c, event);
+	if (!trackMouse) return;
+	var p = event.relativePoint.scale(SCALE);
+//	console.log("-- move x:"+p.x+", y:"+p.y)
+	draw();
+}, false);
+
+c.addEventListener("mouseup", function(event) {
+	appendEventExtensions(c, event);
+	if (!trackMouse) return;
+	trackMouse = false;
+	var p = event.relativePoint.scale(SCALE);
+//	console.log("-> up   x:"+p.x+", y:"+p.y)
+}, false);
+
+c.addEventListener("mouseout", function(event) {
+	appendEventExtensions(c, event);
+	if (!trackMouse) return;
+	trackMouse = false;
+	var p = event.relativePoint.scale(SCALE);
+	console.log("-> out  x:"+p.x+", y:"+p.y)
+	//TODO cancel
+}, false);
+
+draw()
+
+</script>
+</body>
+</html>
