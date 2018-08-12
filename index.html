@@ -235,10 +235,11 @@ function appendDrawingExtensions(draw2d) {
 		}
 		this.closePath();
 		
+		if (options.stroke != false) {
+			this.stroke();
+		}
 		if (options.fill == true) {
 			this.fill();
-		} else {
-			this.stroke();
 		}
 	};
 	draw2d.drawCircle = function(circle, options = {}) {
@@ -247,19 +248,22 @@ function appendDrawingExtensions(draw2d) {
 		
 		this.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
 		
+		if (options.stroke != false) {
+			this.stroke();
+		}
 		if (options.fill == true) {
 			this.fill();
-		} else {
-			this.stroke();
 		}
 	};
 	draw2d.drawRect = function(rect, options = {}) {
 		this.applyStyle(options);
 		this.beginPath;
+		
+		if (options.stroke != false) {
+			this.strokeRect(rect.l, rect.t, rect.width(), rect.height());
+		}
 		if (options.fill == true) {
 			this.fillRect(rect.l, rect.t, rect.width(), rect.height());
-		} else {
-			this.strokeRect(rect.l, rect.t, rect.width(), rect.height());
 		}
 	};
 }
@@ -353,11 +357,13 @@ var algorithms = [
 		},
 	},
 	{
-		desc: "1: Single circle from center with radius of max distance to vertex",
+		desc: "1: Single circle from center with radius of distance to furthest vertex",
 		show: false,
 		drawOptions: {
 			lineWidth: 0.5,
-			strokeStyle: "#800",
+			strokeStyle: "#80000040",
+			fillStyle: "#80000008",
+			fill: true,
 		},
 		fun: function(poly) {
 			var center = poly.center();
@@ -371,6 +377,72 @@ var algorithms = [
 			return [
 				Circle(center, radius),
 			];
+		},
+	},
+	{
+		desc: "2: Circle from each vertex, radius to furthest neighbour",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.3,
+			strokeStyle: "#00800040",
+			fillStyle: "#00800008",
+			fill: true,
+		},
+		fun: function(poly) {
+			var ret = [];
+			function getFurthest(th, n, p) {
+				return Math.max(th.distanceTo(n), th.distanceTo(p));
+			}
+			ret.push(Circle(poly.get(0), getFurthest(poly.get(0), poly.get(1), poly.get(poly.length() - 1)))); 
+			for (i = 1; i < poly.length() - 1; ++i) {
+				ret.push(Circle(poly.get(i), getFurthest(poly.get(i), poly.get(i + 1), poly.get(i - 1))))
+			}
+			ret.push(Circle(poly.get(poly.length() - 1), getFurthest(poly.get(poly.length() - 1), poly.get(0), poly.get(poly.length() - 2))));
+			return ret;
+		},
+	},
+	{
+		desc: "3: Circle from center or each side + margin",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.3,
+			strokeStyle: "#00008040",
+			fillStyle: "#00008008",
+			fill: true,
+		},
+		fun: function(poly) {
+			var ret = [];
+			for (i = 0, l = poly.length() - 1; i < l; ++i) {
+				var r = Rect(poly.get(i), poly.get(i + 1));
+				var c = r.center();
+				ret.push(Circle(c, c.distanceTo(poly.get(i))*1.2));
+			}
+			{
+				var r = Rect(poly.get(poly.length() - 1), poly.get(0));
+				var c = r.center();
+				ret.push(Circle(c, c.distanceTo(poly.get(i))*1.2));
+			}
+			
+			return ret;
+		},
+	},
+	{
+		desc: "4: Circle from each vertex with radius to center of polygon",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.3,
+			strokeStyle: "#80008040",
+			fillStyle: "#80008008",
+			fill: true,
+		},
+		fun: function(poly) {
+			var ret = [];
+			var center = poly.center();
+			for (i = 0; i < poly.length(); ++i) {
+				var p = poly.get(i);
+				ret.push(Circle(p, p.distanceTo(center)));
+			}
+			return ret;
 		},
 	},
 ];
