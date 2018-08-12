@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html>
 <body>
-<canvas id="content" width="1400" height="900" style="border: 1px solid gray; margin: 10px;"></canvas>
+
+	<canvas id="content" width="1400" height="900" style="border: 1px solid gray; margin: 10px; float: left;"></canvas>
+
 <script>
 /*       CONSTANTS      */
 var SCALE = 4;
@@ -13,6 +15,7 @@ function Point(x, y) {
 	return { 
 		x: x,
 		y: y,
+		clone: function() { return Point(this.x, this.y); },
 		scale: function(scale) {
 			return Point(this.x / scale, this.y / scale);
 		},
@@ -39,19 +42,33 @@ function Point(x, y) {
 			this.y = arguments[1];
 			return;
 		},
-		clone: function() { return Point(this.x, this.y); },
 	};
 }
 
 function Rect() { 
 	var ret = {};
-	if (arguments.length == 1) { //copy
-		var p = arguments[0];
-		ret.l = p.l;
-		ret.r = p.r;
-		ret.t = p.t;
-		ret.b = p.b;
-	} else if (arguments.length == 2) { //from points
+	if (arguments.length == 1) {
+		if (Array.isArray(arguments[0])) { //from points list
+			var a = arguments[0];
+			if (a.length < 1) return;
+			ret.l = a[0].x;
+			ret.r = a[0].x;
+			ret.t = a[0].y;
+			ret.b = a[0].y;
+			for (i = 1, l = a.length; i < l; ++i) {
+				if (a[i].x < ret.l) ret.l = a[i].x;
+				if (a[i].x > ret.r) ret.r = a[i].x;
+				if (a[i].y < ret.t) ret.t = a[i].y;
+				if (a[i].y > ret.b) ret.b = a[i].y;
+			}
+		} else { //copy
+			var p = arguments[0];
+			ret.l = p.l;
+			ret.r = p.r;
+			ret.t = p.t;
+			ret.b = p.b;
+		}
+	} else if (arguments.length == 2) { //from 2 points
 		var p1 = arguments[0];
 		var p2 = arguments[1];
 		if (p1.x > p2.x) {
@@ -75,6 +92,7 @@ function Rect() {
 		ret.t = arguments[2];
 		ret.b = arguments[3];
 	} else return;
+	ret.clone = function() { return Rect(this); };
 	ret.contains = function(point) {
 		return point.x >= this.l && point.x <= this.r && point.y >= this.t && point.y <= this.b;
 	};
@@ -118,7 +136,38 @@ function Rect() {
 	ret.equals = function(o) {
 		return this.l == o.l && this.r == o.r && this.t == o.t && this.b == o.b;
 	};
-	ret.clone = function() { return Rect(this); };
+	ret.center = function() {
+		return Point((this.l + this.r) / 2, (this.t + this.b) / 2);
+	};
+	return ret;
+}
+
+function Polygon() {
+	var ret = {};
+	ret.path = arguments[0];
+	ret.clone = function() { return Polygon(arrayCopy(this.path)); };
+	ret.center = function() { return Rect(this.path).center(); };
+	ret.getIndexOnEdge = function(point) {
+		if (this.path.length < 1) return null;
+		if (this.path.length == 1) {
+			if (this.path[0].equals(point, POINT_ERROR)) return 0;
+			return null;
+		}
+		
+		for (var i = 0, l = this.path.length - 1; i < l; ++i) {
+			if (this.path[i].equals(point, POINT_ERROR)) return i;
+			if (this.path[i + 1].equals(point, POINT_ERROR)) return i + 1;
+			if (isPointOnLine(this.path[i], this.path[i + 1], point)) return i + 0.5;
+		}
+		if (this.path.length > 2 && isPointOnLine(this.path[this.path.length - 1], this.path[0], point)) return this.path.length - 0.5;
+		
+		return null;
+	};
+	ret.isPointOnEdge = function(point) { return getIndexOnEdge(point) != null; };
+	ret.insert = function(index, point) {
+		this.path = arrayInsert(this.path, index, point);
+	};
+	ret.get = function(index) { return this.path[index]; };
 	return ret;
 }
 
@@ -155,27 +204,6 @@ function isPointOnLine(l1, l2, point) {
 	}
 }
 
-function getPointOnPath(path, point) {
-	if (path.length < 1) return null;
-	if (path.length == 1) {
-		if (path[0].equals(point, POINT_ERROR)) return 0;
-		return null;
-	}
-	
-	for (var i = 0, l = path.length - 1; i < l; ++i) {
-		if (path[i].equals(point, POINT_ERROR)) return i;
-		if (path[i + 1].equals(point, POINT_ERROR)) return i + 1;
-		if (isPointOnLine(path[i], path[i + 1], point)) return i + 0.5;
-	}
-	if (path.length > 2 && isPointOnLine(path[path.length - 1], path[0], point)) return path.length - 0.5;
-	
-	return null;
-}
-
-function isPointOnPath(path, point) {
-	return getPointOnPath(path, point) !== null;
-}
-
 function arrayInsert(array, index, item) {
 	if (index >= array.length) {
 		return [ ...array, item ]
@@ -201,20 +229,29 @@ function arrayCopy(array) {
 var c = document.getElementById("content");
 var d = c.getContext("2d");
 
-var path = [
-	Point(40, 50),
-	Point(60, 70),
-	Point(70, 50),
-	Point(70, 40),
-	Point(50, 40),
-];
+/* 
+ - add posibility to add more independant objects
+	- merging objects when intersect ?
+ - simplify object when point on line within LINE_ERROR
+*/
+var path = Polygon([
+	Point(78.25, 96.5),
+	Point(101.5, 107.5),
+	Point(123, 100),
+	Point(138.25, 72.25),
+	Point(111, 50),
+	Point(80, 70),
+]);
 
-var userPath = arrayCopy(path);
+var userPath = path.clone();
 
 
 d.scale(SCALE, SCALE);
 
-function draw(path) {
+function redraw() { draw(userPath); }
+
+function draw(polygon) {
+	var path = polygon.path;
 	d.clearRect(0, 0, c.width, c.height);
 	d.beginPath();
 	d.lineWidth = 1;
@@ -237,12 +274,11 @@ c.addEventListener("mousedown", function(event) {
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("<- down x:"+p.x+", y:"+p.y);
 	
-	var w = getPointOnPath(path, p)
+	var w = userPath.getIndexOnEdge(p)
 	var i = parseInt(w);
-	userPath = arrayCopy(path);
-	if (i == w) trackMouse = userPath[i];
+	if (i == w) trackMouse = userPath.get(i);
 	else {
-		userPath = arrayInsert(userPath, i + 1, p);
+		userPath.insert(i + 1, p);
 		trackMouse = p;
 	}
 }, false);
@@ -253,7 +289,7 @@ c.addEventListener("mousemove", function(event) {
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("-- move x:"+p.x+", y:"+p.y)
 	trackMouse.moveTo(p);
-	draw(userPath);
+	redraw();
 }, false);
 
 c.addEventListener("mouseup", function(event) {
@@ -262,8 +298,8 @@ c.addEventListener("mouseup", function(event) {
 	trackMouse = null;
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("-> up   x:"+p.x+", y:"+p.y)
-	path = arrayCopy(userPath);
-	draw(userPath);
+	path = userPath.clone();
+	redraw();
 }, false);
 
 c.addEventListener("mouseout", function(event) {
@@ -272,11 +308,11 @@ c.addEventListener("mouseout", function(event) {
 	trackMouse = null;
 	var p = event.relativePoint.scale(SCALE);
 //	console.log("-> out  x:"+p.x+", y:"+p.y)
-	userPath = arrayCopy(path);
-	draw(userPath);
+	userPath = path.clone();
+	redraw();
 }, false);
 
-draw(userPath)
+redraw()
 
 </script>
 </body>
