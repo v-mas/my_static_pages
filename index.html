@@ -1,9 +1,20 @@
 <!DOCTYPE html>
 <html>
 <body>
-
-	<canvas id="content" width="1400" height="900" style="border: 1px solid gray; margin: 10px; float: left;"></canvas>
-
+	<div style="display: block; float: left;">
+		<canvas id="content" width="1200" height="900" style="border: 1px solid gray; margin: 10px; float: left;"></canvas>
+		<div style="float: left;">
+			<div>
+				<ul>
+					<li>You can grab vertex to move it.</li>
+					<li>You can grab side to create new vertx.</li>
+					<li>Last action will cancel if you move out of the box.</li>
+					<li>Clicking on vertex will remove it (max down to triangle).</li>
+				</ul>
+			</div>
+			<div id="alg_cont" style="clear: left; border: none; margin: 10px;"></div>
+		</div>
+	</div>
 <script>
 /*       CONSTANTS      */
 var SCALE = 4;
@@ -16,20 +27,20 @@ function Point(x, y) {
 		x: x,
 		y: y,
 		clone: function() { return Point(this.x, this.y); },
-		scale: function(scale) {
-			return Point(this.x / scale, this.y / scale);
-		},
-		moveBy: function(mx, my) {
-			return Point(this.x + mx, this.y + my);
-		},
 		distanceTo: function(o) {
 			var dx = Math.abs(this.x - o.x);
 			var dy = Math.abs(this.y - o.y);
 			return Math.sqrt(dx * dx + dy * dy);
 		},
+		draw: function(d2d, options) {
+			d2d.drawCircle(Circle(this, 0.5), options);
+		},
 		equals: function(o, tolerance) {
 			if (arguments.length == 1) return this.x == o.x && this.y == o.y;
 			return Math.abs(this.x - o.x) < tolerance && Math.abs(this.y - o.y) < tolerance;
+		},
+		moveBy: function(mx, my) {
+			return Point(this.x + mx, this.y + my);
 		},
 		moveTo: function() {
 			if (arguments.length < 1) return;
@@ -41,6 +52,9 @@ function Point(x, y) {
 			this.x = arguments[0];
 			this.y = arguments[1];
 			return;
+		},
+		scale: function(scale) {
+			return Point(this.x / scale, this.y / scale);
 		},
 	};
 }
@@ -93,8 +107,14 @@ function Rect() {
 		ret.b = arguments[3];
 	} else return;
 	ret.clone = function() { return Rect(this); };
+	ret.center = function() {
+		return Point((this.l + this.r) / 2, (this.t + this.b) / 2);
+	};
 	ret.contains = function(point) {
 		return point.x >= this.l && point.x <= this.r && point.y >= this.t && point.y <= this.b;
+	};
+	ret.draw = function(d2d, options) {
+		d2d.drawRect(this, options);
 	};
 	ret.enlarge = function() {
 		if(arguments.length == 0) return Rect(this);
@@ -127,26 +147,29 @@ function Rect() {
 		}
 		return Rect(this);
 	};
-	ret.width = function() {
-		return this.r - this.l;
+	ret.equals = function(o) {
+		return this.l == o.l && this.r == o.r && this.t == o.t && this.b == o.b;
 	};
 	ret.height = function() {
 		return this.b - this.t;
 	};
-	ret.equals = function(o) {
-		return this.l == o.l && this.r == o.r && this.t == o.t && this.b == o.b;
-	};
-	ret.center = function() {
-		return Point((this.l + this.r) / 2, (this.t + this.b) / 2);
+	ret.width = function() {
+		return this.r - this.l;
 	};
 	return ret;
 }
 
-function Polygon() {
+function Polygon(points) {
 	var ret = {};
-	ret.path = arguments[0];
-	ret.clone = function() { return Polygon(arrayCopy(this.path)); };
+	ret.path = points;
+	ret.clone = function() { return Polygon(arrayClone(this.path)); };
+	ret.bounds = function() { return Rect(this.path); };
 	ret.center = function() { return Rect(this.path).center(); };
+	ret.draw = function(d2d, options) {
+		d2d.drawPolygon(this, options);
+	};
+	ret.length = function() { return this.path.length; };
+	ret.get = function(index) { return this.path[index]; };
 	ret.getIndexOnEdge = function(point) {
 		if (this.path.length < 1) return null;
 		if (this.path.length == 1) {
@@ -165,19 +188,80 @@ function Polygon() {
 	};
 	ret.isPointOnEdge = function(point) { return getIndexOnEdge(point) != null; };
 	ret.insert = function(index, point) {
-		this.path = arrayInsert(this.path, index, point);
+		this.path.splice(index, 0, point);
 	};
-	ret.get = function(index) { return this.path[index]; };
+	ret.remove = function(index) {
+		this.path.splice(index, 1);
+	};
 	return ret;
 }
 
+function Circle(point, radius) {
+	return {
+		center: point,
+		radius: radius,
+		clone: function() { return Circle(this.center, this.radius); },
+		draw: function(d2d, options) {
+			d2d.drawCircle(this, options);
+		},
+	};
+}
+
 /*      extensions     */
-function appendEventExtensions(element, event) {
-	event.relativeX = event.pageX - element.offsetLeft;
-	event.relativeY = event.pageY - element.offsetTop;
+function appendMouseEventExtensions(event) {
+	event.relativeX = event.pageX - event.target.offsetLeft;
+	event.relativeY = event.pageY - event.target.offsetTop;
 	event.point = Point(event.x, event.y);
 	event.pagePoint = Point(event.pageX, event.pageY);
 	event.relativePoint = Point(event.relativeX, event.relativeY);
+}
+
+function appendDrawingExtensions(draw2d) {
+	draw2d.applyStyle = function(options) {
+		this.lineWidth = options.lineWidth || 1;
+		this.strokeStyle = options.strokeStyle || "#000000";
+		this.fillStyle = options.fillStyle || "#000000";
+	};
+	draw2d.drawPolygon = function(polygon, options = {}) {
+		this.applyStyle(options);
+		this.beginPath();
+		
+		var path = polygon.path;
+		if (path.length > 0) {
+			this.moveTo(path[0].x, path[0].y);
+			for(l = path.length, i = 1; i < l; ++i) {
+				this.lineTo(path[i].x, path[i].y);
+			}
+		}
+		this.closePath();
+		
+		if (options.fill == true) {
+			this.fill();
+		} else {
+			this.stroke();
+		}
+	};
+	draw2d.drawCircle = function(circle, options = {}) {
+		this.applyStyle(options);
+		this.beginPath();
+		
+		this.arc(circle.center.x, circle.center.y, circle.radius, 0, 2 * Math.PI);
+		
+		if (options.fill == true) {
+			this.fill();
+		} else {
+			this.stroke();
+		}
+	};
+	draw2d.drawRect = function(rect, options = {}) {
+		this.applyStyle(options);
+		this.beginPath;
+		if (options.fill == true) {
+			this.fillRect(rect.l, rect.t, rect.width(), rect.height());
+		} else {
+			this.strokeRect(rect.l, rect.t, rect.width(), rect.height());
+		}
+	};
 }
 
 /*          FUNCTIONS          */
@@ -204,20 +288,7 @@ function isPointOnLine(l1, l2, point) {
 	}
 }
 
-function arrayInsert(array, index, item) {
-	if (index >= array.length) {
-		return [ ...array, item ]
-	} else {
-		var ret = [];
-		for(i = 0, l = array.length; i < l; i++) {
-			if (index == i) ret.push(item);
-			ret.push(array[i]);
-		}
-		return ret;
-	}
-}
-
-function arrayCopy(array) {
+function arrayClone(array) {
 	var ret = [];
 	for (i = 0, l = array.length; i < l; ++i) {
 		ret.push(array[i].clone());
@@ -228,6 +299,8 @@ function arrayCopy(array) {
 /*            GLOBALS           */
 var c = document.getElementById("content");
 var d = c.getContext("2d");
+appendDrawingExtensions(d);
+d.scale(SCALE, SCALE);
 
 /* 
  - add posibility to add more independant objects
@@ -245,74 +318,173 @@ var path = Polygon([
 
 var userPath = path.clone();
 
+var algorithms = [
+	{
+		desc: "Show polygon center",
+		show: false,
+		drawOptions: {},
+		fun: function(poly) {
+			return [
+				poly.center(),
+			];
+		},
+	},
+	{
+		desc: "Show polygon bounds",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.1,
+			strokeStyle: "#333",
+		},
+		fun: function(poly) {
+			return [
+				poly.bounds(),
+			];
+		},
+	},
+	{
+		desc: "Show vertices",
+		show: true,
+		drawOptions: {
+			lineWidth: 1.5,
+		},
+		fun: function(poly) {
+			return poly.path;
+		},
+	},
+	{
+		desc: "1: Single circle from center with radius of max distance to vertex",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.5,
+			strokeStyle: "#800",
+		},
+		fun: function(poly) {
+			var center = poly.center();
+			var radius = 0;
+			
+			for (i = 0; i < poly.length(); ++i) {
+				var distance = center.distanceTo(poly.get(i));
+				if (distance > radius) radius = distance;
+			}
+			
+			return [
+				Circle(center, radius),
+			];
+		},
+	},
+];
 
-d.scale(SCALE, SCALE);
 
-function redraw() { draw(userPath); }
-
-function draw(polygon) {
-	var path = polygon.path;
+function redraw() { 
 	d.clearRect(0, 0, c.width, c.height);
-	d.beginPath();
-	d.lineWidth = 1;
-	d.strokeStyle = "#000000";
-	d.fillStyle = "#000000";
-	if (path.length > 0) {
-		d.moveTo(path[0].x, path[0].y);
-		for(l = path.length, i = 1; i < l; ++i) {
-			d.lineTo(path[i].x, path[i].y);
+	d.drawPolygon(userPath);
+	for (a = 0; a < algorithms.length; ++a) {
+		var alg = algorithms[a]
+		if (alg.show) {
+			var shapes = alg.fun(userPath);
+			for(i = 0; i < shapes.length; ++i) {
+				shapes[i].draw(d, alg.drawOptions);
+			}
 		}
 	}
-	d.closePath();
-	d.stroke();
 }
 
-var trackMouse = null
+/*           event handling           */
+(function() {
+	var mousePoint = null;
+	var mousePointIndex = null;
+	var mouseMoved = false;
 
-c.addEventListener("mousedown", function(event) {
-	appendEventExtensions(c, event);
-	var p = event.relativePoint.scale(SCALE);
-//	console.log("<- down x:"+p.x+", y:"+p.y);
-	
-	var w = userPath.getIndexOnEdge(p)
-	var i = parseInt(w);
-	if (i == w) trackMouse = userPath.get(i);
-	else {
-		userPath.insert(i + 1, p);
-		trackMouse = p;
+	c.addEventListener("mousedown", function(event) {
+		appendMouseEventExtensions(event);
+		var p = event.relativePoint.scale(SCALE);
+	//	console.log("<- down x:"+p.x+", y:"+p.y);
+		
+		var w = userPath.getIndexOnEdge(p)
+		if (w == null) return;
+		var i = parseInt(w);
+		if (i == w) {
+			mousePoint = userPath.get(i);
+			mousePointIndex = i;
+		} else {
+			userPath.insert(i + 1, p);
+			mousePoint = p;
+			mousePointIndex = i + 1;
+		}
+		mouseMoved = false;
+	});
+
+	c.addEventListener("mousemove", function(event) {
+		if (mousePoint === null) return;
+		appendMouseEventExtensions(event);
+		var p = event.relativePoint.scale(SCALE);
+	//	console.log("-- move x:"+p.x+", y:"+p.y)
+		mousePoint.moveTo(p);
+		mouseMoved = true;
+		redraw();
+	});
+
+	c.addEventListener("mouseup", function(event) {
+		if (mousePoint === null) return;
+		appendMouseEventExtensions(event);
+		var p = event.relativePoint.scale(SCALE);
+	//	console.log("-> up   x:"+p.x+", y:"+p.y)
+		if (mouseMoved) {
+			path = userPath.clone();
+		} else {
+			if (userPath.path.length > 3) {
+				userPath.remove(mousePointIndex);
+			}
+			path = userPath.clone();
+		}
+		mousePoint = null;
+		mousePointIndex = null;
+		mouseMoved = false;
+		redraw();
+	});
+
+	c.addEventListener("mouseout", function(event) {
+		if (mousePoint === null) return;
+		appendMouseEventExtensions(event);
+		mousePoint = null;
+		mousePointIndex = null;
+		mouseMoved = false;
+		var p = event.relativePoint.scale(SCALE);
+	//	console.log("-> out  x:"+p.x+", y:"+p.y)
+		userPath = path.clone();
+		redraw();
+	});
+})();
+
+/* add algoritm selection */
+(function() {
+	var algContainer = document.getElementById("alg_cont");
+	for (a = 0; a < algorithms.length; ++a) {
+		var alg = algorithms[a];
+		var container = document.createElement("div");
+		var label = document.createElement("label");
+		var input = document.createElement("input");
+		input.type = "checkbox";
+		input.alg = alg;
+		input.addEventListener("input", function(event) {
+			event.target.alg.show = event.target.checked;
+			redraw();
+		});
+		input.name = "alg"+a;
+		input.id = "alg"+a;
+		input.checked = alg.show;
+		label.appendChild(input);
+		var desc = document.createTextNode(alg.desc);
+		label.appendChild(desc);
+		container.appendChild(label);
+		
+		
+		algContainer.appendChild(container);
 	}
-}, false);
+})();
 
-c.addEventListener("mousemove", function(event) {
-	appendEventExtensions(c, event);
-	if (trackMouse === null) return;
-	var p = event.relativePoint.scale(SCALE);
-//	console.log("-- move x:"+p.x+", y:"+p.y)
-	trackMouse.moveTo(p);
-	redraw();
-}, false);
-
-c.addEventListener("mouseup", function(event) {
-	appendEventExtensions(c, event);
-	if (trackMouse === null) return;
-	trackMouse = null;
-	var p = event.relativePoint.scale(SCALE);
-//	console.log("-> up   x:"+p.x+", y:"+p.y)
-	path = userPath.clone();
-	redraw();
-}, false);
-
-c.addEventListener("mouseout", function(event) {
-	appendEventExtensions(c, event);
-	if (trackMouse === null) return;
-	trackMouse = null;
-	var p = event.relativePoint.scale(SCALE);
-//	console.log("-> out  x:"+p.x+", y:"+p.y)
-	userPath = path.clone();
-	redraw();
-}, false);
-
-redraw()
+redraw();
 
 </script>
 </body>
