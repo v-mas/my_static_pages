@@ -2,7 +2,7 @@
 <html>
 <body>
 	<div style="display: block; float: left;">
-		<canvas id="content" width="1200" height="900" style="border: 1px solid gray; margin: 10px; float: left;"></canvas>
+		<canvas id="content" width="900" height="600" style="border: 1px solid gray; margin: 10px; float: left;"></canvas>
 		<div style="float: left;">
 			<div>
 				<ul>
@@ -165,26 +165,74 @@ function Polygon(points) {
 	ret.clone = function() { return Polygon(arrayClone(this.path)); };
 	ret.bounds = function() { return Rect(this.path); };
 	ret.center = function() { return Rect(this.path).center(); };
+	ret.contains = function(point) {
+		if (this.path.length < 1) return false;
+		if (this.path.length == 1) return this.path[0].equals(point, 0);
+		if (this.path.length == 2) return Line(this.path[0], this.path[1]).contains(point, 0);
+		// ray-casting algorithm based on
+		// http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+		
+		var x = point.x, y = point.y;
+		
+		var inside = false;
+		for (var i = 0, j = this.path.length - 1; i < this.path.length; j = i++) {
+			var xi = this.path[i].x, yi = this.path[i].y;
+			var xj = this.path[j].x, yj = this.path[j].y;
+			
+			var intersect = ((yi > y) != (yj > y))
+				&& (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+			if (intersect) inside = !inside;
+		}
+		
+		return inside;
+	};
 	ret.draw = function(d2d, options) {
 		d2d.drawPolygon(this, options);
 	};
 	ret.length = function() { return this.path.length; };
 	ret.get = function(index) { return this.path[index]; };
-	ret.getIndexOnEdge = function(point) {
+	ret.getIndexOnEdge = function(point, error = POINT_ERROR) {
 		if (this.path.length < 1) return null;
 		if (this.path.length == 1) {
-			if (this.path[0].equals(point, POINT_ERROR)) return 0;
+			if (this.path[0].equals(point, error)) return 0;
 			return null;
 		}
 		
 		for (var i = 0, l = this.path.length - 1; i < l; ++i) {
-			if (this.path[i].equals(point, POINT_ERROR)) return i;
-			if (this.path[i + 1].equals(point, POINT_ERROR)) return i + 1;
-			if (isPointOnLine(this.path[i], this.path[i + 1], point)) return i + 0.5;
+			if (this.path[i].equals(point, error)) return i;
+			if (this.path[i + 1].equals(point, error)) return i + 1;
+			if (Line(this.path[i], this.path[i + 1]).contains(point)) return i + 0.5;
 		}
-		if (this.path.length > 2 && isPointOnLine(this.path[this.path.length - 1], this.path[0], point)) return this.path.length - 0.5;
+		if (this.path.length > 2 && Line(this.path[this.path.length - 1], this.path[0]).contains(point)) return this.path.length - 0.5;
 		
 		return null;
+	};
+	ret.getNearestPoint = function(point) {
+		if (this.path.length < 1) return null;
+		if (this.path.length == 1) return this.path[0].copy();
+		if (this.contains(point)) return point;
+		
+		var nearest = null;
+		var nearestDistance = null;
+		
+		for (i = 0; i < this.path.length - 2; ++i) {
+			var n = Line(this.path[i], this.path[i + 1]).crossingPoint(point);
+			var nd = n.distanceTo(point);
+			if (!nearest || nearestDistance > nd) {
+				nearest = n;
+				nearestDistance = nd
+			}
+		}
+		{
+			var n = Line(this.path[this.path.length - 1], this.path[0]).crossingPoint(point);
+			var nd = n.distanceTo(point);
+			if (!nearest || nearestDistance > nd) {
+				nearest = n;
+				nearestDistance = nd
+			}
+		}
+		
+		return nearest;
 	};
 	ret.isPointOnEdge = function(point) { return getIndexOnEdge(point) != null; };
 	ret.insert = function(index, point) {
@@ -205,6 +253,48 @@ function Circle(point, radius) {
 			d2d.drawCircle(this, options);
 		},
 	};
+}
+
+function Line(p1, p2) {
+	return {
+		l1: p1,
+		l2: p2,
+		clone: function() { return Line(l1, l2); },
+		contains: function(point, error = LINE_ERROR) {
+			if (!Rect(this.l1, this.l2).enlarge(error).contains(point)) return false;
+			
+			var l = this.l2.moveBy(-this.l1.x, -this.l1.y);
+			if (l.x == 0) { //vertical
+				return Math.abs(this.l1.x - point.x) < error;
+			} else if (l.y == 0) { //horizontal
+				return Math.abs(this.l1.y - point.y) < error;
+			} else {
+				return this.crossingPoint(point).distanceTo(point) < error;
+			}
+		},
+		crossingPoint: function(point) {
+			var l = this.l2.moveBy(-this.l1.x, -this.l1.y);
+			if (l.x == 0) { //vertical
+				return Point(this.l1.x, point.y);
+			} else if (l.y == 0) { //horizontal
+				return Point(point.x, this.l1.y);
+			} else {
+				var relativePoint = point.moveBy(-this.l1.x, -this.l1.y);
+				
+				var lSlope = l.y / l.x;
+				var pSlope = -1 / lSlope;
+				
+				var pc = relativePoint.y - (pSlope * relativePoint.x);
+				var cX = pc / (lSlope - pSlope);
+				var cY = cX * lSlope;
+				
+				return Point(cX, cY).moveBy(this.l1.x, this.l1.y);
+			}
+		},
+		draw: function(d2d, options) {
+			d2d.drawLine(this, options);
+		},
+	}
 }
 
 /*      extensions     */
@@ -257,7 +347,7 @@ function appendDrawingExtensions(draw2d) {
 	};
 	draw2d.drawRect = function(rect, options = {}) {
 		this.applyStyle(options);
-		this.beginPath;
+		this.beginPath();
 		
 		if (options.stroke != false) {
 			this.strokeRect(rect.l, rect.t, rect.width(), rect.height());
@@ -266,32 +356,23 @@ function appendDrawingExtensions(draw2d) {
 			this.fillRect(rect.l, rect.t, rect.width(), rect.height());
 		}
 	};
+	draw2d.drawLine = function(line, options = {}) {
+		this.applyStyle(options);
+		this.beginPath();
+		
+		this.moveTo(line.l1.x, line.l1.y);
+		this.lineTo(line.l2.x, line.l2.y);
+		
+		if (options.stroke != false) {
+			this.stroke();
+		}
+		if (options.fill == true) {
+			this.fill();
+		}
+	};
 }
 
 /*          FUNCTIONS          */
-function isPointOnLine(l1, l2, point) {
-	if (!Rect(l1, l2).enlarge(LINE_ERROR).contains(point)) return false;
-	
-	var l = l2.moveBy(-l1.x, -l1.y);
-	if (l.x == 0) { //vertical
-		return Math.abs(l1.x - point.x) < LINE_ERROR;
-	} else if (l.y == 0) { //horizontal
-		return Math.abs(l1.y - point.y) < LINE_ERROR;
-	} else {
-		var relativePoint = point.moveBy(-l1.x, -l1.y);
-		
-		var lSlope = l.y / l.x;
-		var pSlope = -1 / lSlope;
-		
-		var pc = relativePoint.y - (pSlope * relativePoint.x);
-		var cX = pc / (lSlope - pSlope);
-		var cY = cX * lSlope;
-		var crossPoint = Point(cX, cY);
-		
-		return crossPoint.distanceTo(relativePoint) < LINE_ERROR;
-	}
-}
-
 function arrayClone(array) {
 	var ret = [];
 	for (i = 0, l = array.length; i < l; ++i) {
@@ -354,6 +435,30 @@ var algorithms = [
 		},
 		fun: function(poly) {
 			return poly.path;
+		},
+	},
+	{
+		desc: "connect all vertices",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.2,
+			strokeStyle: "#404040",
+		},
+		fun: function(poly) {
+			var ret = [];
+			
+			var len = poly.length();
+			for (i = 0; i < len; ++i) {
+				for (j = 0; j < len; ++j) {
+					var pi = poly.get(i);
+					var pj = poly.get(j);
+					if (pi !== pj) {
+						ret.push(Line(pi, pj));
+					}
+				}
+			}
+			
+			return ret;
 		},
 	},
 	{
@@ -445,6 +550,64 @@ var algorithms = [
 			return ret;
 		},
 	},
+	{
+		desc: "5: 20 circles every smaller then other",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.3,
+			strokeStyle: "#00808040",
+			fillStyle: "#00808008",
+			fill: true,
+		},
+		fun: function(poly) {
+			var center = poly.center();
+			var radius = 0;
+			
+			for (i = 0; i < poly.length(); ++i) {
+				var distance = center.distanceTo(poly.get(i));
+				if (distance > radius) radius = distance;
+			}
+			var step = radius / 20;
+			
+			var ret = [];
+			
+			for (i = 0; i < 20; ++i) {
+				ret.push(Circle(center, radius - (step * i)));
+			}
+			
+			return ret;
+			
+		},
+	},
+	{
+		desc: "6. same as 5 but move center to nearest edge if outsid.",
+		show: false,
+		drawOptions: {
+			lineWidth: 0.3,
+			strokeStyle: "#ff800040",
+			fillStyle: "#ff800008",
+			fill: true,
+		},
+		fun: function(poly) {
+			var center = poly.getNearestPoint(poly.center());
+			
+			var radius = 0;
+			
+			for (i = 0; i < poly.length(); ++i) {
+				var distance = center.distanceTo(poly.get(i));
+				if (distance > radius) radius = distance;
+			}
+			var step = radius / 20;
+			
+			var ret = [];
+			
+			for (i = 0; i < 20; ++i) {
+				ret.push(Circle(center, radius - (step * i)));
+			}
+			
+			return ret;
+		},
+	},
 ];
 
 
@@ -493,6 +656,7 @@ function redraw() {
 		var p = event.relativePoint.scale(SCALE);
 	//	console.log("-- move x:"+p.x+", y:"+p.y)
 		mousePoint.moveTo(p);
+		
 		mouseMoved = true;
 		redraw();
 	});
