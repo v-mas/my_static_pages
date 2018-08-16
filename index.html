@@ -15,6 +15,9 @@
 			<div id="alg_cont" style="clear: left; border: none; margin: 10px;"></div>
 		</div>
 	</div>
+	<div style="clear: both; float: left;">
+		<button onclick="cs();" style="width: 10px; height: 10px; background: #8888; border: none;"></button>
+	</div>
 <script>
 /*       CONSTANTS      */
 var SCALE = 4;
@@ -27,6 +30,7 @@ function Point(x, y) {
 		x: x,
 		y: y,
 		clone: function() { return Point(this.x, this.y); },
+		toString: function() { return "Point("+this.x+", "+this.y+")"; },
 		distanceTo: function(o) {
 			var dx = Math.abs(this.x - o.x);
 			var dy = Math.abs(this.y - o.y);
@@ -107,6 +111,7 @@ function Rect() {
 		ret.b = arguments[3];
 	} else return;
 	ret.clone = function() { return Rect(this); };
+	ret.toString = function() { return "Rect("+this.l+", "+this.r+", "+this.t+", "+this.b+")"; };
 	ret.center = function() {
 		return Point((this.l + this.r) / 2, (this.t + this.b) / 2);
 	};
@@ -163,6 +168,7 @@ function Polygon(points) {
 	var ret = {};
 	ret.path = points;
 	ret.clone = function() { return Polygon(arrayClone(this.path)); };
+	ret.toString = function() { return "Polygon(["+this.path.toString()+"])"; };
 	ret.bounds = function() { return Rect(this.path); };
 	ret.center = function() { return Rect(this.path).center(); };
 	ret.contains = function(point) {
@@ -249,6 +255,7 @@ function Circle(point, radius) {
 		center: point,
 		radius: radius,
 		clone: function() { return Circle(this.center, this.radius); },
+		toString: function() { return "Circle("+this.center.toString()+", "+this.radius+")"; },
 		draw: function(d2d, options) {
 			d2d.drawCircle(this, options);
 		},
@@ -260,6 +267,7 @@ function Line(p1, p2) {
 		l1: p1,
 		l2: p2,
 		clone: function() { return Line(l1, l2); },
+		toString: function() { return "Line("+this.l1.toString()+", "+this.l2.toString()+")"; },
 		contains: function(point, error = LINE_ERROR) {
 			if (!Rect(this.l1, this.l2).enlarge(error).contains(point)) return false;
 			
@@ -659,6 +667,17 @@ function redraw() {
 				shapes[i].draw(d, alg.drawOptions);
 			}
 		}
+	}
+}
+
+function cs() {
+	userPath = Polygon([Point(81.75, 103.75),Point(90.25, 95.5),Point(72.25, 95.75),Point(128, 94.75),Point(153.5, 77),Point(129.5, 77),Point(126.25, 80.5),Point(119.25, 80.75),Point(115.5, 77),Point(119.5, 71.75),Point(126, 71.25),Point(129.75, 77),Point(153.75, 77),Point(125.5, 56.5),Point(91.5, 57),Point(72.25, 57.25),Point(91.5, 57),Point(81, 48.25),Point(61.25, 48.5),Point(72.25, 57.25),Point(62.25, 57.5),Point(87, 76.75),Point(115.75, 77),Point(87.25, 77),Point(62.75, 96.5),Point(72.5, 96),Point(62, 104.25)]);
+	path = userPath.clone();
+	var cb = document.getElementById("alg2");
+	if (cb && cb.checked) {
+		cb.click();
+	} else {
+		redraw();
 	}
 }
 
