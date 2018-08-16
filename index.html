@@ -272,24 +272,59 @@ function Line(p1, p2) {
 				return this.crossingPoint(point).distanceTo(point) < error;
 			}
 		},
-		crossingPoint: function(point) {
+		crossingPoint: function(point, allowOutside = false) {
 			var l = this.l2.moveBy(-this.l1.x, -this.l1.y);
+			var relPoint = point.moveBy(-this.l1.x, -this.l1.y);
+			var ret;
 			if (l.x == 0) { //vertical
-				return Point(this.l1.x, point.y);
+				ret = Point(0, relPoint.y); 
 			} else if (l.y == 0) { //horizontal
-				return Point(point.x, this.l1.y);
+				ret = Point(relPoint.x, 0);
 			} else {
-				var relativePoint = point.moveBy(-this.l1.x, -this.l1.y);
-				
 				var lSlope = l.y / l.x;
 				var pSlope = -1 / lSlope;
 				
-				var pc = relativePoint.y - (pSlope * relativePoint.x);
+				var pc = relPoint.y - (pSlope * relPoint.x);
 				var cX = pc / (lSlope - pSlope);
 				var cY = cX * lSlope;
 				
-				return Point(cX, cY).moveBy(this.l1.x, this.l1.y);
+				ret = Point(cX, cY);
 			}
+			
+			if (!allowOutside) {
+				if (l.y > 0) {
+					if (ret.y < 0) {
+						ret.y = 0;
+					} else if (ret.y > l.y) {
+						ret.y = l.y;
+					}
+				} else if (l.y == 0) {
+					ret.y = 0;
+				} else {
+					if (ret.y > 0) {
+						ret.y = 0;
+					} else if (ret.y < l.y) {
+						ret.y = l.y;
+					}
+				}
+				
+				if (l.x > 0) {
+					if (ret.x < 0) {
+						ret.x = 0;
+					} else if (ret.x > l.x) {
+						ret.x = l.x;
+					}
+				} else if (l.x == 0) {
+					ret.x = 0;
+				} else {
+					if (ret.x > 0) {
+						ret.x = 0;
+					} else if (ret.x < l.x) {
+						ret.x = l.x;
+					}
+				}
+			}
+			return ret.moveBy(this.l1.x, this.l1.y)
 		},
 		draw: function(d2d, options) {
 			d2d.drawLine(this, options);
@@ -580,7 +615,7 @@ var algorithms = [
 		},
 	},
 	{
-		desc: "6. same as 5 but move center to nearest edge if outsid.",
+		desc: "6. same as 5 but move center to nearest edge if outside",
 		show: false,
 		drawOptions: {
 			lineWidth: 0.3,
@@ -608,6 +643,8 @@ var algorithms = [
 			return ret;
 		},
 	},
+	// 7. minimalne drzewo rozpinające w grafie po odległości (algorytm Kruskala)
+	// 8. podzielić na trójkąty - środek ciężkości figury
 ];
 
 
